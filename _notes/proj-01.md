@@ -1,3 +1,7 @@
+# Project 1
+https://github.com/pingcap/talent-plan/tree/master/courses/rust/projects/project-1
+
+
 - Setup
 
 ```
