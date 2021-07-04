@@ -10,7 +10,7 @@ use serde_json::Deserializer;
 use crate::{KvsError, Result};
 use std::ffi::OsStr;
 
-const COMPACTION_THRESHOLD: u64 = 1024 * 1024;
+const COMPACTION_THRESHOLD: u64 = 50; //1024 * 1024;
 
 /// The `KvStore` stores string key/value pairs.
 ///
@@ -30,13 +30,15 @@ const COMPACTION_THRESHOLD: u64 = 1024 * 1024;
 /// # }
 /// ```
 pub struct KvStore {
-    // directory for the log and other data.
+    // directory for the log and other data. the name of the log files are 0, 1, 2...
     path: PathBuf,
-    // map generation number to the file reader.
+    // map generation number to the file reader. key is file number, value is file
     readers: HashMap<u64, BufReaderWithPos<File>>,
-    // writer of the current log.
+    // writer of the current log. has file position
     writer: BufWriterWithPos<File>,
+    // current log file
     current_gen: u64,
+    // <key, command position>
     index: BTreeMap<String, CommandPos>,
     // the number of bytes representing "stale" commands that could be
     // deleted during a compaction.
@@ -55,18 +57,24 @@ impl KvStore {
         let path = path.into();
         fs::create_dir_all(&path)?;
 
+        // <key, file>
         let mut readers = HashMap::new();
+        // <key, command position>
         let mut index = BTreeMap::new();
 
+        // sort the log files under path
         let gen_list = sorted_gen_list(&path)?;
         let mut uncompacted = 0;
 
+        // read all log files: 1.log, 2.log ...
         for &gen in &gen_list {
             let mut reader = BufReaderWithPos::new(File::open(log_path(&path, gen))?)?;
+            // 
             uncompacted += load(gen, &mut reader, &mut index)?;
             readers.insert(gen, reader);
         }
-
+        
+        // create a new log file as current_gen log file
         let current_gen = gen_list.last().unwrap_or(&0) + 1;
         let writer = new_log_file(&path, current_gen, &mut readers)?;
 
@@ -95,7 +103,7 @@ impl KvStore {
         if let Command::Set { key, .. } = cmd {
             if let Some(old_cmd) = self
                 .index
-                .insert(key, (self.current_gen, pos..self.writer.pos).into())
+                .insert(key, (self.current_gen, pos..self.writer.pos).into()) // (pos..self.writer.pos) creats a range
             {
                 self.uncompacted += old_cmd.len;
             }
@@ -253,9 +261,11 @@ fn load(
     let mut pos = reader.seek(SeekFrom::Start(0))?;
     let mut stream = Deserializer::from_reader(reader).into_iter::<Command>();
     let mut uncompacted = 0; // number of bytes that can be saved after a compaction.
+    // 
     while let Some(cmd) = stream.next() {
         let new_pos = stream.byte_offset() as u64;
         match cmd? {
+            // set command: insert <key, pos> into index
             Command::Set { key, .. } => {
                 if let Some(old_cmd) = index.insert(key, (gen, pos..new_pos).into()) {
                     uncompacted += old_cmd.len;
@@ -298,9 +308,9 @@ impl Command {
 
 /// Represents the position and length of a json-serialized command in the log.
 struct CommandPos {
-    gen: u64,
-    pos: u64,
-    len: u64,
+    gen: u64,     // log file
+    pos: u64,     // pos in the log file
+    len: u64,     // the length of command
 }
 
 impl From<(u64, Range<u64>)> for CommandPos {

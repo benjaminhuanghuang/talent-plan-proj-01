@@ -2,6 +2,13 @@
 https://github.com/pingcap/talent-plan/tree/master/courses/rust/projects/project-2
 
 
+- Reading
+  
+  - https://github.com/pingcap/talent-plan/blob/master/courses/rust/building-blocks/bb-2.md
+
+  - Error Handling in Rust
+  
+
 - Setup
 copy test cases and cargo.toml from
 https://github.com/pingcap/talent-plan/tree/master/courses/rust/projects/project-2
